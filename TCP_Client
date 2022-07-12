@@ -1,0 +1,92 @@
+package socket_code;
+
+import java.io.*;
+import java.net.Socket;
+import java.net.*;
+
+
+public class TCP_Client {
+	
+	ObjectOutputStream out;
+	ObjectInputStream in;
+	
+	final static int TOTAL_SEQUENCE_NUMBERS = 1024;
+	final int MAX_SLIDING_WINDOW_VALUE = 2^16;
+    final int TOTAL_SEGMENTS = 10000000;
+	int sequenceNumber = 1;
+	int sliding_window_size = 1;
+	int last_ack_recieved = 0;
+	int last_frame_sent = 0;
+	int segments_sent = 0;
+	int next_frame;
+
+	
+	public static int serverPort = 8080;
+	public static int clientPort = 9090;
+    int i;
+    
+    String packet;
+	
+	//sending the segments
+	public void sendPackets() throws Exception{
+		
+		if(sliding_window_size < MAX_SLIDING_WINDOW_VALUE) {
+			if(segments_sent <TOTAL_SEGMENTS ) {
+				segments_sent++;
+				System.out.println("Sending segment # " + segments_sent + "\n" );
+				for(i=0; i < TOTAL_SEQUENCE_NUMBERS; i++) {
+					packet = String.valueOf(i);
+					out.writeObject(packet);
+					
+					System.out.println("Sent seq  no " + i + "\n" );
+					
+				}
+				
+				System.out.println("Successfully sent segment # " + segments_sent + "\n" );
+			}
+			
+				
+		}
+		
+		
+		
+	}
+	
+	public void runClient() throws Exception {
+		
+		try {
+			//creating the client socket
+			Socket client = new Socket("98.234.51.193", 4999);
+			System.out.print("client socket created");
+			
+		    out = new ObjectOutputStream(client.getOutputStream());
+		    in = new ObjectInputStream(client.getInputStream());
+			
+			//sending a message to the server
+			BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+			System.out.print("sending message...");
+			String msg = ("network");
+			out.writeObject(msg);
+			
+			sendPackets();
+			
+			in.close();
+			out.close();
+			client.close();
+			
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
+		System.out.println("connection terminated.");
+		
+	}
+	
+	public static void main(String[]  args) throws Exception {
+		TCP_Client s = new TCP_Client();
+	     s.runClient();
+		
+
+	}
+
+}
