@@ -3,7 +3,6 @@ package socket_code;
 import java.io.*;
 import java.net.Socket;
 
-
 public class TCP_Client {
 	
 	ObjectOutputStream out;
@@ -15,9 +14,7 @@ public class TCP_Client {
 	int sequenceNumber = 1;
 	int sliding_window_size = 1;
 	int last_ack_recieved = 0;
-	int last_frame_sent = 0;
 	int segments_sent = 0;
-	int next_frame;
     boolean segment_lost = false;
     int i;
     
@@ -32,13 +29,13 @@ public class TCP_Client {
 				System.out.println("Sending segment # " + segments_sent + "\n" );
 				for(i=0; i < TOTAL_SEQUENCE_NUMBERS; i=i+1024) {
 					packet = String.valueOf(i);
+					packet = packet.concat(" ");
+					packet = packet.concat(String.valueOf(segments_sent));
 					out.writeObject(packet);
-					System.out.println("Sent seq  no " + i + "\n" );
+					System.out.println("Sending seq  no " + i + " and segment # : " + segments_sent);
 				}
 				SlidingWindowHandling();
-				if(AckRecieved()) {
-					segments_sent++;
-				}
+				segments_sent++;
 			}	
 		}
 		
