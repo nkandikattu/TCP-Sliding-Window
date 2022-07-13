@@ -9,7 +9,7 @@ public class TCP_Client {
 	ObjectOutputStream out;
 	ObjectInputStream in;
 	
-	final static int TOTAL_SEQUENCE_NUMBERS = 1024;
+	final static int TOTAL_SEQUENCE_NUMBERS = 2^16;
 	final int MAX_SLIDING_WINDOW_VALUE = 2^16;
     final int TOTAL_SEGMENTS = 10000000;
 	int sequenceNumber = 1;
@@ -28,14 +28,17 @@ public class TCP_Client {
 		
 		if(sliding_window_size < MAX_SLIDING_WINDOW_VALUE) {
 			if(segments_sent <TOTAL_SEGMENTS ) {
+				System.out.println("Window size :  " + sliding_window_size + "\n" );
 				System.out.println("Sending segment # " + segments_sent + "\n" );
-				for(i=0; i < TOTAL_SEQUENCE_NUMBERS; i++) {
+				for(i=0; i < TOTAL_SEQUENCE_NUMBERS; i=i+1024) {
 					packet = String.valueOf(i);
 					out.writeObject(packet);
 					System.out.println("Sent seq  no " + i + "\n" );
 				}
 				SlidingWindowHandling();
-				segments_sent++;
+				if(AckRecieved()) {
+					segments_sent++;
+				}
 			}	
 		}
 		
@@ -56,10 +59,12 @@ public class TCP_Client {
 		if(AckRecieved() && sliding_window_size < MAX_SLIDING_WINDOW_VALUE && segment_lost==false) {
 			sliding_window_size = sliding_window_size * 2;
 			System.out.println("Successfully sent segment # " + segments_sent + "\n" );
+			System.out.println("Window size :  " + sliding_window_size + "\n" );
 		}
 		else if(AckRecieved() && sliding_window_size < MAX_SLIDING_WINDOW_VALUE && segment_lost==true) {
 			sliding_window_size = sliding_window_size + 1;
 			System.out.println("Successfully sent segment # " + segments_sent + "\n" );
+			System.out.println("Window size :  " + sliding_window_size + "\n" );
 		}
 		else if(!AckRecieved()){
 			sliding_window_size = sliding_window_size/2;
@@ -68,6 +73,7 @@ public class TCP_Client {
 		}
 		else if(AckRecieved() && sliding_window_size==MAX_SLIDING_WINDOW_VALUE) {
 			System.out.println("Successfully sent segment # " + segments_sent + "\n" );
+			System.out.println("Window size :  " + sliding_window_size + "\n" );
 		}
 	}
 	
