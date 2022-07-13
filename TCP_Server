@@ -1,0 +1,135 @@
+package server;
+
+import java.net.*;
+import java.io.*;
+import java.util.*;
+
+public class TCP_Server {
+
+    // Initialize socket and input stream
+    Socket sender = null;
+    ServerSocket receiver;
+
+    ObjectInputStream in;
+    ObjectOutputStream out;
+
+
+    String ack, pkt, data="";
+//
+//    int SeqNum = 0, RWS = 5;
+//    int LFR = 0;
+//    int LAF = LFR+RWS;
+//
+//    final static int MAX_SEQ_NUM = 2^16;
+//    final static int MAX_SW_VALUE = 2^16;
+//    final static int MAX_SEGMENTS = 10000000;
+//    int segNum = 1;
+//    int seqNum = 1;
+//
+    ArrayList<String> buffer = new ArrayList<>();
+//
+//    Random rand = new Random();
+
+    // Constructor with port
+    public TCP_Server(int port) throws IOException {
+
+        // Instantiate server
+        receiver = new ServerSocket(port, 10, InetAddress.getByName("10.251.103.106"));
+        System.out.println("TCP_Server instantiated ...");
+        System.out.println("TCP_Server established: " + receiver.getInetAddress());
+
+        // Establish connection with Client
+        System.out.println("Waiting for a client ...");
+        sender = receiver.accept();
+
+        if(sender == null) {
+            System.out.println("Connection established with NULL");
+        } else {
+            System.out.println("Client accepted");
+            System.out.println("Connection established with: " + sender.getInetAddress());
+        }
+
+        // Takes in input from client socket and gives output
+        in = new ObjectInputStream(sender.getInputStream());
+        out = new ObjectOutputStream(sender.getOutputStream());
+
+    }
+
+    // Closing I/O streams, server, and connection
+    public void closeConnection() {
+        try {
+            in.close();
+            out.close();
+            receiver.close();
+            System.out.println("\nConnection Terminated.");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Waits for "network" message from Client
+    // Sends back "success" to fully establish connection
+    public void initSetUp() {
+        try {
+            while(in.readUTF() != null) {
+                String est = in.readUTF();
+                if(est.equals("network")) {
+                    System.out.println("Message received: " + est);
+                    out.writeChars("success");
+                    out.flush();
+                    System.out.println("Message sent: success");
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void checkDuplicates() {
+        for(int i = 0; i < buffer.size(); i++) {
+            //if(buffer.get(i).)
+        }
+    }
+
+    public void run() throws IOException {
+
+        initSetUp();
+
+        closeConnection();
+
+//        while(segNum < MAX_SEGMENTS) {
+//            try {
+//                pkt = (String)in.readObject();
+//                String []str = pkt.split("\\s");
+//
+//                segNum = Integer.parseInt(str[0]);
+//                seqNum = Integer.parseInt(str[1]);
+//
+//                //checkDuplicates(segNum, seqNum, pkt);
+//
+//
+//                if((SeqNum<=LFR)||(SeqNum>LAF)) {
+//                    System.out.println("\nMsg received : "+data);
+//                    delay = rand.nextInt(5);
+//
+//                    if(delay<3 || LFR==15) {
+//                        out.writeObject(ack);
+//                        out.flush();
+//                        System.out.println("sending ack " +ack);
+//                        SeqNum++;
+//                    } else {
+//                        System.out.println("Not sending ack");
+//                    }
+//                } else {
+//                    out.writeObject(LFR);
+//                    out.flush();
+//                    System.out.println("resending ack " +LFR);
+//                }
+//            } catch(Exception e) {}
+//        }
+    }
+
+    public static void main(String args[]) throws IOException, InterruptedException {
+        TCP_Server server = new TCP_Server(5000);
+        server.run();
+    }
