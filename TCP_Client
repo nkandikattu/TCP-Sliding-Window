@@ -2,7 +2,6 @@ package socket_code;
 
 import java.io.*;
 import java.net.Socket;
-import java.net.*;
 
 
 public class TCP_Client {
@@ -19,56 +18,76 @@ public class TCP_Client {
 	int last_frame_sent = 0;
 	int segments_sent = 0;
 	int next_frame;
-
-	
-	public static int serverPort = 8080;
-	public static int clientPort = 9090;
+    boolean segment_lost = false;
     int i;
     
     String packet;
 	
 	//sending the segments
-	public void sendPackets() throws Exception{
+	public void SendPackets() throws Exception{
 		
 		if(sliding_window_size < MAX_SLIDING_WINDOW_VALUE) {
 			if(segments_sent <TOTAL_SEGMENTS ) {
-				segments_sent++;
 				System.out.println("Sending segment # " + segments_sent + "\n" );
 				for(i=0; i < TOTAL_SEQUENCE_NUMBERS; i++) {
 					packet = String.valueOf(i);
 					out.writeObject(packet);
-					
 					System.out.println("Sent seq  no " + i + "\n" );
-					
 				}
-				
-				System.out.println("Successfully sent segment # " + segments_sent + "\n" );
-			}
-			
-				
+				SlidingWindowHandling();
+				segments_sent++;
+			}	
 		}
 		
-		
-		
+	}
+	
+	public boolean AckRecieved() throws IOException, ClassNotFoundException {
+		String Ack = (String)in.readObject();
+        last_ack_recieved = Integer.parseInt(Ack);
+        if(last_ack_recieved==i+1) {
+        	System.out.println("ack received : " + last_ack_recieved);
+        	return true;
+        }
+        return false;
+        
+	}
+	
+	public void SlidingWindowHandling() throws ClassNotFoundException, IOException {
+		if(AckRecieved() && sliding_window_size < MAX_SLIDING_WINDOW_VALUE && segment_lost==false) {
+			sliding_window_size = sliding_window_size * 2;
+			System.out.println("Successfully sent segment # " + segments_sent + "\n" );
+		}
+		else if(AckRecieved() && sliding_window_size < MAX_SLIDING_WINDOW_VALUE && segment_lost==true) {
+			sliding_window_size = sliding_window_size + 1;
+			System.out.println("Successfully sent segment # " + segments_sent + "\n" );
+		}
+		else if(!AckRecieved()){
+			sliding_window_size = sliding_window_size/2;
+			segment_lost=true;
+			System.out.println("Unsuccessfully sent segment # " + segments_sent + "\n" );
+		}
+		else if(AckRecieved() && sliding_window_size==MAX_SLIDING_WINDOW_VALUE) {
+			System.out.println("Successfully sent segment # " + segments_sent + "\n" );
+		}
 	}
 	
 	public void runClient() throws Exception {
 		
 		try {
 			//creating the client socket
-			Socket client = new Socket("98.234.51.193", 4999);
+			Socket client = new Socket("localhost", 4999);
+			client.setSoTimeout(10*1000);
 			System.out.print("client socket created");
 			
 		    out = new ObjectOutputStream(client.getOutputStream());
 		    in = new ObjectInputStream(client.getInputStream());
 			
 			//sending a message to the server
-			BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
 			System.out.print("sending message...");
 			String msg = ("network");
 			out.writeObject(msg);
 			
-			sendPackets();
+			SendPackets();
 			
 			in.close();
 			out.close();
