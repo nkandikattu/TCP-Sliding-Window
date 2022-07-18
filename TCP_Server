@@ -42,6 +42,7 @@ public class TCP_Server {
 
     public void checkBuffer(int seqNum) throws IOException {
         if(buffer.isEmpty()) {
+            System.out.println("Buffer is empty, adding " + seqNum + " to buffer." );
             buffer.add(seqNum);
         } else if(seqNum == buffer.first() - 1024) {
             ArrayList<Integer> bufferList = new ArrayList<>(buffer);
@@ -81,19 +82,28 @@ public class TCP_Server {
         while(keepListening) {
 
             try {
-                segment = (String) in.readObject();
-                int seqNum = Integer.parseInt(segment);
+                int seqNum = (int) in.readObject();
+                System.out.println("Message received: " + seqNum);
 
                 total_segments_received++;
+                System.out.println("Total segments received: " + total_segments_received);
                 long endTime = System.nanoTime();
                 seq_num_over_time.add(new String[]{String.valueOf(seqNum), String.valueOf(startTime - endTime)});
 
                 if (buffer.isEmpty() && seqNum == currSeqNum + 1024) {
-                    sendAck(currSeqNum + 1024);
-                    currSeqNum = seqNum;
+                    if(seqNum == 64513) {
+                        sendAck(1);
+                        currSeqNum = -1023;
+                    } else {
+                        sendAck(seqNum + 1024);
+                        currSeqNum = seqNum;
+                    }
                 } else {
+                    System.out.println("checkBuffer() called.");
                     checkBuffer(seqNum);
                 }
+
+                System.out.println("");
 
 
 //                if((SeqNum <= last_frame_received)||(SeqNum > largest_acceptable_frame)) {
