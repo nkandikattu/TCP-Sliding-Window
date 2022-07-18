@@ -2,6 +2,7 @@ package server;
 
 import java.net.*;
 import java.io.*;
+import java.sql.Array;
 import java.util.*;
 
 public class TCP_Server {
@@ -16,77 +17,93 @@ public class TCP_Server {
 
     String ack, pkt, data="";
 
-    boolean connEst = false;
-
-    int SeqNum = 0, receiver_window_size = 5;
+    int SeqNum = 0;
+    int receiver_window_size = 1;
     int last_frame_received = 0;
     int largest_acceptable_frame = last_frame_received + receiver_window_size;
 
     String segment = "";
-    final static int MAX_SEQ_NUM = 2^16;
-    final static int MAX_SW_VALUE = 2^16;
+    final static int MAX_SEQ_NUM = (int) Math.pow(2, 16);
+    final static int MAX_SW_VALUE = (int) Math.pow(2, 16);
     final static int MAX_SEGMENTS = 10000000;
-    int currSegNum = 1;
-    int currSeqNum = 1;
+    int currSeqNum = -1023;
 
-    ArrayList<Integer[]> buffer = new ArrayList<>();
+    int last_segment_received = 0;
+    int total_segments_received = 0;
+
+    TreeSet<Integer> buffer = new TreeSet<>();
+    ArrayList<Integer> window_size_over_time = new ArrayList<>();
+    ArrayList<String[]> seq_num_over_time = new ArrayList<>();
+
+    int duplicates = 0;
 
     // Constructor with port
     public TCP_Server() {}
 
-    public void checkDuplicates(int segNum, int seqNum, String segment) {
-        for(int i = 0; i < buffer.size(); i++) {
-            if(buffer.get(i)[0] == segNum) {
-
+    public void checkBuffer(int seqNum) throws IOException {
+        if(buffer.isEmpty()) {
+            buffer.add(seqNum);
+        } else if(seqNum == buffer.first() - 1024) {
+            ArrayList<Integer> bufferList = new ArrayList<>(buffer);
+            for(int i = 0; i < bufferList.size(); i++) {
+                if(seqNum == bufferList.get(0) - 1024) {
+                    sendAck(seqNum + 1024);
+                    seqNum = bufferList.get(0);
+                    bufferList.remove(0);
+                }
             }
+            buffer = new TreeSet<>(bufferList);
+        } else {
+            buffer.add(seqNum);
         }
     }
 
-    public void run() {
+    public void sendAck(int ack) throws IOException {
+        out.writeObject(ack);
+        out.flush();
+        System.out.println("Sent ACK of " + ack);
+    }
 
+    // Requests number of segments sent from client to calculate good-put
+    public void requestSentSegmentNum() {
         try {
+            out.writeObject("How many segments sent so far?");
+            out.flush();
+            System.out.println("Number of segments sent requested from client.");
+        } catch(Exception e) {
+            e.printStackTrace();
+        }
+    }
 
-            // Instantiate server
-            receiver = new ServerSocket(5000);
-            System.out.println("TCP_Server instantiated ...");
-            System.out.println("TCP_Server established: " + receiver.getInetAddress());
+    public void receivePackets() throws ClassNotFoundException {
+        long startTime = System.nanoTime();
+        boolean keepListening = true;
+        while(keepListening) {
 
-            // Establish connection with Client
-            System.out.println("\nWaiting for a client ...");
-            sender = receiver.accept();
+            try {
+                segment = (String) in.readObject();
+                int seqNum = Integer.parseInt(segment);
 
-            System.out.println("Client accepted.");
-            System.out.println("Connection established with: " + sender.getInetAddress());
+                total_segments_received++;
+                long endTime = System.nanoTime();
+                seq_num_over_time.add(new String[]{String.valueOf(seqNum), String.valueOf(startTime - endTime)});
 
-            // Takes in input from client socket and gives output
-            in = new ObjectInputStream(sender.getInputStream());
-            out = new ObjectOutputStream(sender.getOutputStream());
+                if (buffer.isEmpty() && seqNum == currSeqNum + 1024) {
+                    sendAck(currSeqNum + 1024);
+                    currSeqNum = seqNum;
+                } else {
+                    checkBuffer(seqNum);
+                }
 
-            String msg = (String)in.readObject();
-            System.out.println("\nMessage received: " + msg);
-            if(msg.equals("network")) {
-                out.writeObject("success");
-                out.flush();
-                System.out.println("Connection tested successfully.");
-            }
 
-//            while(currSegNum < MAX_SEGMENTS) {
-//                segment = (String)in.readObject();
-//                String []str = pkt.split("\\s");
-//
-//                int segNum = Integer.parseInt(str[0]);
-//                int seqNum = Integer.parseInt(str[1]);
-//
-//                checkDuplicates(segNum, seqNum, segment);
-//
-//
 //                if((SeqNum <= last_frame_received)||(SeqNum > largest_acceptable_frame)) {
 //                    System.out.println("\nMsg received : "+data);
 //
-//                    if(last_frame_received ==15) {
-//                        out.writeObject(ack);
-//                        out.flush();
-//                        System.out.println("sending ack " +ack);
+//                    if(last_frame_received == 15) {
+////                        out.writeObject(ack);
+////                        out.flush();
+////                        System.out.println("sending ack " +ack);
+//                        sendAck();
 //                        SeqNum++;
 //                    } else {
 //                        System.out.println("Not sending ack");
@@ -96,14 +113,54 @@ public class TCP_Server {
 //                    out.flush();
 //                    System.out.println("resending ack " + last_frame_received);
 //                }
-//            }
+            } catch (EOFException e) {
+                System.out.println("Nothing left to receive.");
+                keepListening = false;
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
 
+    }
+
+    public void run() {
+
+        try {
+
+            // Instantiate server
+            receiver = new ServerSocket(9999);
+            System.out.println("TCP_Server established: " + receiver.getInetAddress());
+
+            // Establish connection with Client
+            System.out.println("\nWaiting for a client ...");
+            sender = receiver.accept();
+            System.out.println("Client accepted.");
+            System.out.println("Connection established with: " + sender.getInetAddress());
+
+            // Takes in input from client socket and gives output
+            in = new ObjectInputStream(sender.getInputStream());
+            out = new ObjectOutputStream(sender.getOutputStream());
+
+            // Handshake in form of receiving "network" and sending "success"
+            String msg = (String)in.readObject();
+            System.out.println("\nMessage received: " + msg);
+            if(msg.equals("network")) {
+                out.writeObject("success");
+                out.flush();
+                System.out.println("Connection tested successfully.");
+            }
+
+            receivePackets();
+
+            // Close I/O streams and server.
             in.close();
             out.close();
             receiver.close();
             System.out.println("\nConnection Terminated.");
 
-        } catch(Exception e) {
+        } catch(ClassNotFoundException e) {
+            e.printStackTrace();
+        } catch(IOException e) {
             e.printStackTrace();
         }
     }
