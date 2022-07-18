@@ -13,7 +13,7 @@ public class TCPClient2 {
 	final static int TOTAL_SEQUENCE_NUMBERS = (int) Math.pow(2, 16);
 	final int MAX_SLIDING_WINDOW_VALUE = (int) Math.pow(2, 16);
  //   final int TOTAL_SEGMENTS = 10000000;
-	final int TOTAL_SEGMENTS = 1000;
+	final int TOTAL_SEGMENTS = 500;
 	int starting_seq_number = 0;
 	int ending_seq_number = 1024;
 	int sliding_window_size = 1;
@@ -29,13 +29,25 @@ public class TCPClient2 {
     int number_of_segments_sent = 0;
     ArrayList<Integer> recieved_Acks = new ArrayList<>();
     ArrayList<Integer[]> buffer = new ArrayList<>();
-    
+    ArrayList<String[]> seq_no_dropped_over_time = new ArrayList<>();
+    ArrayList<String[]> window_size_over_time = new ArrayList<>();
+    long sendingStartTime;
+    long droppedEndTime;
+    long windowStartTime;
+    long windowEndTime;
     String packet;
+    
+	public void reset() {
+		seq_no = -1023;
+	}
 	
 	//sending the segments
 	public void SendPackets() throws Exception{
-			
+			    sendingStartTime = System.nanoTime();
 				while(segment_number <TOTAL_SEGMENTS ) {
+					if(seq_no >= TOTAL_SEQUENCE_NUMBERS) {
+						reset();
+					}
 					System.out.println(" BEGINNING: segments value " + segment_number + "sequence number value : " + seq_no);
 					System.out.println("sending packets..." );
 					//number of segments to send
@@ -43,53 +55,52 @@ public class TCPClient2 {
 						System.out.println("Sending segment # " + segment_number + "\n" );
 						//sending sequence numbers + the segment	
 						
-						    seq_no += 1024;
-							packet = String.valueOf(seq_no); //sending the sequence number
-							packet = packet.concat(" ");
+						    
+					//		packet = String.valueOf(seq_no); //sending the sequence number
+					//		packet = packet.concat(" ");
 					//		packet = packet.concat(String.valueOf(segments)); //sending the segment number
 					//		packet = packet.concat(" ");
-							packet = packet.concat(String.valueOf(sliding_window_size)); //sending the window size
-							out.writeObject(packet);
-							System.out.println("Sending seq number " + seq_no + " and window size : " + sliding_window_size);
+					//		packet = packet.concat(String.valueOf(sliding_window_size)); //sending the window size
+							out.writeObject(seq_no);
+							System.out.println("Sending seq number " + seq_no + " and window size is : " + sliding_window_size);
 							buffer.add(	new Integer[]{segment_number, seq_no});
+							if(seq_no >= TOTAL_SEQUENCE_NUMBERS || (seq_no + 1024) >= TOTAL_SEQUENCE_NUMBERS) {
+								reset();
+							}
+							seq_no += 1024;
 							segment_number++;
 							number_of_segments_sent++;
+							
+							calculate_success = AckRecieved();
+							
+							if(segment_number==TOTAL_SEGMENTS+1) {
+								break;
+							}
+							
 					}
-					calculate_success = AckRecieved();
+					
 					SlidingWindowHandling();
 					
 					System.out.println("one transaction completed");
-					if(seq_no >= TOTAL_SEQUENCE_NUMBERS) {
-						reset();
-					}
+					
 					System.out.println("value of next segment sending is  " + segment_number );
-					if(seq_no != last_ack_recieved - 1) {
-						retransmission(last_ack_recieved - 1);
-					} 
-					}
+					
+				}
 				
 				System.out.println("***>>>  segments value " + segment_number + "  sequence number value : " + seq_no);
 				System.out.println("all segments sent, restart.");
-				if(seq_no >= TOTAL_SEQUENCE_NUMBERS) {
-					reset();
-				}
+				
 				System.out.println("***>>>  segments value after reset " + segment_number + "  sequence number value after reset: " + seq_no);
 				
 			}
-			
-	public void reset() {
-		seq_no = 0;
-	}
-		
 
 	
 	public boolean AckRecieved() throws IOException, ClassNotFoundException {
-		String Ack = (String)in.readObject();
-        last_ack_recieved = Integer.parseInt(Ack);
+		int Ack = (int) in.readObject();
+        last_ack_recieved = Ack;
         System.out.println("last ack recieved by client is : " + last_ack_recieved);
-//       last_segment_recieved = ((last_ack_recieved - 1) / 1024);
-        System.out.println("the last segment recieved is  : " + last_segment_recieved);
-        ack_expected = seq_no+1024;
+
+        ack_expected = seq_no;
         System.out.println("expected ack  : " + ack_expected);
         
         if(last_ack_recieved==ack_expected) {
@@ -101,7 +112,8 @@ public class TCPClient2 {
 	}
 	
 	public void retransmission(int resending_from_segment) throws IOException {
-		
+		droppedEndTime = System.nanoTime();
+		seq_no_dropped_over_time.add(new String[]{String.valueOf(resending_from_segment), String.valueOf(droppedEndTime - sendingStartTime)});
 		int resending_from_seq_no = resending_from_segment*1024;
 		Integer[] resend_from = {resending_from_segment, resending_from_seq_no};
 		int position = buffer.indexOf(resend_from);
@@ -124,30 +136,45 @@ public class TCPClient2 {
 	}
 	
 	public void SlidingWindowHandling() throws ClassNotFoundException, IOException {
+		windowStartTime = System.nanoTime();
 		if(calculate_success && sliding_window_size < MAX_SLIDING_WINDOW_VALUE && segment_lost==false) {
 			sliding_window_size = sliding_window_size * 2;
-			System.out.println("Successfully sent segment # " + (segment_number-1) + "\n" );
+			System.out.println("Successfully sent segments upto " + (segment_number-1) + "\n" );
 			System.out.println("Window size :  " + sliding_window_size + "\n" );
 			buffer.clear();
 		}
 		else if(calculate_success && sliding_window_size < MAX_SLIDING_WINDOW_VALUE && segment_lost==true) {
 			sliding_window_size = sliding_window_size + 1;
-			System.out.println("Successfully sent segment # " + (segment_number-1) + "\n" );
+			System.out.println("Successfully sent segments upto " + (segment_number-1) + "\n" );
 			System.out.println("Window size :  " + sliding_window_size + "\n" );
 			buffer.clear();
 		}
 		else if(!calculate_success){
 			sliding_window_size = sliding_window_size/2;
 			segment_lost=true;
-			System.out.println("Unsuccessfully sent segment # " + (segment_number-j) + "\n" );
+			System.out.println("Unsuccessfully sent segments upto " + (segment_number-j) + "\n" );
 			System.out.println("Window size :  " + sliding_window_size + "\n" );
 			retransmission(segment_number-j);
 		}
 		else if(calculate_success && sliding_window_size==MAX_SLIDING_WINDOW_VALUE) {
 			sliding_window_size = MAX_SLIDING_WINDOW_VALUE;
-			System.out.println("Successfully sent segment # " + (segment_number-1) + "\n" );
+			System.out.println("Successfully sent segments upto " + (segment_number-1) + "\n" );
 			System.out.println("Window size :  " + sliding_window_size + "\n" );
 			buffer.clear();
+		}
+		windowEndTime = System.nanoTime();
+		window_size_over_time.add(new String[]{String.valueOf(sliding_window_size), String.valueOf(windowEndTime - windowStartTime)});
+	}
+	
+	public void Graphs() {
+		try {
+			FileWriter fWriter = new FileWriter("sws_graph.txt");
+			for(int i=0; i<window_size_over_time.size(); i++) {
+				
+			}
+		} catch (IOException e) {
+			
+			e.printStackTrace();
 		}
 	}
 	
@@ -155,8 +182,8 @@ public class TCPClient2 {
 		
 		try {
 			//creating the client socket
-	//		String address = "169.254.160.77"; //sjsu
-			client = new Socket("localhost", 9999);
+			String address = "169.254.160.77"; //sjsu
+			client = new Socket(address, 9999);
 
 			System.out.println("client socket created");
 			
@@ -175,7 +202,8 @@ public class TCPClient2 {
 			String message_recieved = (String)in.readObject();
 			System.out.println(message_recieved + " recieved by client.");
 			
-			 SendPackets();
+			
+			SendPackets();
 			
 			
 			in.close();
@@ -186,15 +214,12 @@ public class TCPClient2 {
 			e.printStackTrace();
 		}
 		
-		System.out.println("connection terminated.");
-		
+		System.out.println("connection terminated.");		
 	}
 	
 	public static void main(String[]  args) throws Exception {
 		TCPClient2 s = new TCPClient2();
 	     s.runClient();
-		
-
 	}
 
 }
