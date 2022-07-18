@@ -1,14 +1,11 @@
 package socket_code;
 
 import java.io.*;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.net.SocketAddress;
 import java.util.ArrayList;
 
 
-public class TCP_Client {
+public class TCPClient2 {
 	
 	ObjectOutputStream out;
 	ObjectInputStream in;
@@ -22,15 +19,14 @@ public class TCP_Client {
 	int sliding_window_size = 1;
 	int last_ack_recieved = 0;
 	int last_segment_recieved = 0;
-	int segments = 1;
+	int segment_number = 1;
     boolean segment_lost = false;
     int ack_expected;
-    int seq_no,j = 0;
+    int j = 0;
+    int seq_no = 1;
     boolean calculate_success;
     Socket client;
-    
-    ArrayList<Integer> sent_sequence_numbers = new ArrayList<>();
-    ArrayList<Integer> sent_segments = new ArrayList<>();
+    int number_of_segments_sent = 0;
     ArrayList<Integer> recieved_Acks = new ArrayList<>();
     ArrayList<Integer[]> buffer = new ArrayList<>();
     
@@ -39,53 +35,49 @@ public class TCP_Client {
 	//sending the segments
 	public void SendPackets() throws Exception{
 			
-				while(segments <TOTAL_SEGMENTS && seq_no < TOTAL_SEQUENCE_NUMBERS) {
-					System.out.println(" BEGINNING: segments value " + segments + "sequence number value : " + seq_no);
+				while(segment_number <TOTAL_SEGMENTS ) {
+					System.out.println(" BEGINNING: segments value " + segment_number + "sequence number value : " + seq_no);
 					System.out.println("sending packets..." );
 					//number of segments to send
 					for(j=0; j<sliding_window_size; j++) {
-						System.out.println("Sending segment # " + segments + "\n" );
+						System.out.println("Sending segment # " + segment_number + "\n" );
 						//sending sequence numbers + the segment	
 						
-						    seq_no = segments*1024;
+						    seq_no += 1024;
 							packet = String.valueOf(seq_no); //sending the sequence number
 							packet = packet.concat(" ");
-							packet = packet.concat(String.valueOf(segments)); //sending the segment number
-							packet = packet.concat(" ");
+					//		packet = packet.concat(String.valueOf(segments)); //sending the segment number
+					//		packet = packet.concat(" ");
 							packet = packet.concat(String.valueOf(sliding_window_size)); //sending the window size
 							out.writeObject(packet);
-							System.out.println("Sending seq number " + segments*1024 + " and segment # : " + segments);
-							buffer.add(	new Integer[]{segments, seq_no});
-				     //		segments++;
-						
-						  if(segments < TOTAL_SEGMENTS) { segments++; }
-						  else {
-							  segments = TOTAL_SEGMENTS;	
-							  }
+							System.out.println("Sending seq number " + seq_no + " and window size : " + sliding_window_size);
+							buffer.add(	new Integer[]{segment_number, seq_no});
+							segment_number++;
+							number_of_segments_sent++;
 					}
 					calculate_success = AckRecieved();
 					SlidingWindowHandling();
-					starting_seq_number = last_ack_recieved;
-					ending_seq_number = (last_ack_recieved-1) + (sliding_window_size * 1024);
+					
 					System.out.println("one transaction completed");
-					System.out.println("value of next segment sending is  " + segments );
-					System.out.println("value of starting seq no " + starting_seq_number + " and value of ending seq no " + ending_seq_number);
-					if(segments != last_segment_recieved + 1) {
-						retransmission(last_segment_recieved + 1);
+					if(seq_no >= TOTAL_SEQUENCE_NUMBERS) {
+						reset();
+					}
+					System.out.println("value of next segment sending is  " + segment_number );
+					if(seq_no != last_ack_recieved - 1) {
+						retransmission(last_ack_recieved - 1);
 					} 
 					}
 				
-				System.out.println("***>>>  segments value " + segments + "  sequence number value : " + seq_no);
+				System.out.println("***>>>  segments value " + segment_number + "  sequence number value : " + seq_no);
 				System.out.println("all segments sent, restart.");
-				if(segments >= TOTAL_SEGMENTS || seq_no >= TOTAL_SEQUENCE_NUMBERS) {
+				if(seq_no >= TOTAL_SEQUENCE_NUMBERS) {
 					reset();
 				}
-				System.out.println("***>>>  segments value after reset " + segments + "  sequence number value after reset: " + seq_no);
+				System.out.println("***>>>  segments value after reset " + segment_number + "  sequence number value after reset: " + seq_no);
 				
 			}
 			
 	public void reset() {
-		segments = 1;
 		seq_no = 0;
 	}
 		
@@ -95,10 +87,9 @@ public class TCP_Client {
 		String Ack = (String)in.readObject();
         last_ack_recieved = Integer.parseInt(Ack);
         System.out.println("last ack recieved by client is : " + last_ack_recieved);
-   //     recieved_Acks.add(last_ack_recieved);
-       last_segment_recieved = ((last_ack_recieved - 1) / 1024);
+//       last_segment_recieved = ((last_ack_recieved - 1) / 1024);
         System.out.println("the last segment recieved is  : " + last_segment_recieved);
-        ack_expected = ((segments - 1) * 1024)+1;
+        ack_expected = seq_no+1024;
         System.out.println("expected ack  : " + ack_expected);
         
         if(last_ack_recieved==ack_expected) {
@@ -110,23 +101,24 @@ public class TCP_Client {
 	}
 	
 	public void retransmission(int resending_from_segment) throws IOException {
+		
 		int resending_from_seq_no = resending_from_segment*1024;
 		Integer[] resend_from = {resending_from_segment, resending_from_seq_no};
 		int position = buffer.indexOf(resend_from);
 		starting_seq_number =  buffer.get(position)[1];
-		ending_seq_number = segments+(sliding_window_size-1) * 1024;
+		ending_seq_number = segment_number+(sliding_window_size-1) * 1024;
 		//number of segments to send
 		for(j=0; j<sliding_window_size; j++) {
 			System.out.println("Resending segment # " + buffer.get(position)[0] + "\n" );
 			//sending sequence numbers + the segment	
-			for(seq_no=starting_seq_number; seq_no < ending_seq_number; seq_no=seq_no+1024) {
 				packet = String.valueOf(buffer.get(position)[1]);
 				packet = packet.concat(" ");
 				packet = packet.concat(String.valueOf(buffer.get(position)[0]));
 				out.writeObject(packet);
-				System.out.println("Sending seq  no " + seq_no + " and segment # : " + segments);
-			}
+				System.out.println("Sending seq  no " + seq_no + " and segment # : " + segment_number);
+			
 			resending_from_segment++;
+			number_of_segments_sent++;
 		}
 
 	}
@@ -134,24 +126,28 @@ public class TCP_Client {
 	public void SlidingWindowHandling() throws ClassNotFoundException, IOException {
 		if(calculate_success && sliding_window_size < MAX_SLIDING_WINDOW_VALUE && segment_lost==false) {
 			sliding_window_size = sliding_window_size * 2;
-			System.out.println("Successfully sent segment # " + (segments-1) + "\n" );
+			System.out.println("Successfully sent segment # " + (segment_number-1) + "\n" );
 			System.out.println("Window size :  " + sliding_window_size + "\n" );
+			buffer.clear();
 		}
 		else if(calculate_success && sliding_window_size < MAX_SLIDING_WINDOW_VALUE && segment_lost==true) {
 			sliding_window_size = sliding_window_size + 1;
-			System.out.println("Successfully sent segment # " + (segments-1) + "\n" );
+			System.out.println("Successfully sent segment # " + (segment_number-1) + "\n" );
 			System.out.println("Window size :  " + sliding_window_size + "\n" );
+			buffer.clear();
 		}
 		else if(!calculate_success){
 			sliding_window_size = sliding_window_size/2;
 			segment_lost=true;
-			System.out.println("Unsuccessfully sent segment # " + (segments-j) + "\n" );
+			System.out.println("Unsuccessfully sent segment # " + (segment_number-j) + "\n" );
 			System.out.println("Window size :  " + sliding_window_size + "\n" );
+			retransmission(segment_number-j);
 		}
 		else if(calculate_success && sliding_window_size==MAX_SLIDING_WINDOW_VALUE) {
 			sliding_window_size = MAX_SLIDING_WINDOW_VALUE;
-			System.out.println("Successfully sent segment # " + (segments-1) + "\n" );
+			System.out.println("Successfully sent segment # " + (segment_number-1) + "\n" );
 			System.out.println("Window size :  " + sliding_window_size + "\n" );
+			buffer.clear();
 		}
 	}
 	
@@ -159,15 +155,10 @@ public class TCP_Client {
 		
 		try {
 			//creating the client socket
-			String address = "169.254.160.77"; //sjsu
+	//		String address = "169.254.160.77"; //sjsu
 			client = new Socket("localhost", 9999);
-		//	client.setSoTimeout(10*1000);
+
 			System.out.println("client socket created");
-			
-	/*		InetAddress address = InetAddress.getByName("10.251.103.106"); //sjsu
-			SocketAddress socketAddress = new InetSocketAddress(neehas_address, 6520);
-			
-			client.connect(socketAddress); */
 			
 		    out = new ObjectOutputStream(client.getOutputStream()); //sending 
 		    System.out.println("output stream created");
@@ -200,7 +191,7 @@ public class TCP_Client {
 	}
 	
 	public static void main(String[]  args) throws Exception {
-		TCP_Client s = new TCP_Client();
+		TCPClient2 s = new TCPClient2();
 	     s.runClient();
 		
 
