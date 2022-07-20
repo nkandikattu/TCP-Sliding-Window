@@ -98,28 +98,31 @@ public class TCPClient2 {
 
 	
 	public boolean AckRecieved() throws IOException, ClassNotFoundException {
-		Goodput();
-		int Ack = (int) in.readObject();
-        last_ack_recieved = Ack;
-        System.out.println("last ack recieved by client is : " + last_ack_recieved);
+		Object recieved_from_server = in.readObject();
+		if(recieved_from_server instanceof String) {
+			Goodput();
+			return true;
+		}
+		else {
+			int Ack = (int) in.readObject();
+	        last_ack_recieved = Ack;
+	        System.out.println("last ack recieved by client is : " + last_ack_recieved);
 
-        ack_expected = seq_no;
-        System.out.println("expected ack  : " + ack_expected);
-        
-        if(last_ack_recieved==ack_expected) {
-        	System.out.println("ack received : " + last_ack_recieved);
-        	return true;
-        } 
-        
-        return false;
+	        ack_expected = seq_no;
+	        System.out.println("expected ack  : " + ack_expected);
+	        
+	        if(last_ack_recieved==ack_expected) {
+	        	System.out.println("ack received : " + last_ack_recieved);
+	        	return true;
+	        } 
+	        
+	        return false;
+		}
 	}
 	
 	public void Goodput() throws ClassNotFoundException, IOException {
-		if(in.readObject() instanceof String) {
-			System.out.println("asking for total number of segments sent " );
-			out.writeObject(String.valueOf(number_of_segments_sent));
-		}
-		
+		System.out.println("asking for total number of segments sent " );
+		out.writeObject(String.valueOf(number_of_segments_sent));
 	}
 	
 	public void retransmission(int resending_from_segment) throws IOException {
@@ -216,7 +219,7 @@ public class TCPClient2 {
 		try {
 			//creating the client socket
 			String address = "169.254.160.77"; //sjsu
-			client = new Socket(address, 9999);
+			client = new Socket("localhost", 9999);
 
 			System.out.println("client socket created");
 			
