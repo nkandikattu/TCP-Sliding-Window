@@ -12,7 +12,7 @@ public class TCPClient2 {
 	final static int TOTAL_SEQUENCE_NUMBERS = (int) Math.pow(2, 16);
 	final int MAX_SLIDING_WINDOW_VALUE = (int) Math.pow(2, 16);
  //   final int TOTAL_SEGMENTS = 10000000;
-	final int TOTAL_SEGMENTS = 10000000;
+	final int TOTAL_SEGMENTS = 1000;
 	int starting_seq_number = 0;
 	int ending_seq_number = 1024;
 	int sliding_window_size = 1;
@@ -39,6 +39,7 @@ public class TCPClient2 {
     String window_graph_info;
     String dropped_seq_no_info;
     Timer timer;
+    //method to reset the sequence number when it reaches 2^16
 	public void reset() {
 		seq_no = -1023;
 	}
@@ -57,9 +58,7 @@ public class TCPClient2 {
 					for(j=0; j<sliding_window_size; j++) {
 						
 					        out.writeObject(seq_no);
-				//	        timer = new Timer();
-				//	        timer.schedule(new Check(), 10*1000); // schedule the task
-				    
+
 						    out.flush();
 							
 							System.out.println("Sending segment # " + segment_number);
@@ -98,7 +97,7 @@ public class TCPClient2 {
 							System.out.println();
 							
 					}
-					
+					//called to adjust the sliding window
 					SlidingWindowHandling();
 					
 					System.out.println("one transaction completed");
@@ -114,13 +113,8 @@ public class TCPClient2 {
 				
 			}
             
-	        public void Check(Object o) throws Exception {
-		         if(o==null) {
-			          retransmission(segment_number-1);
-		    }
-	        }
 
-	
+	//calculates whether correct ack has been received
 	public boolean AckRecieved(Object recieved) throws IOException, ClassNotFoundException {
 
 			int Ack =  (int) recieved;
@@ -137,19 +131,23 @@ public class TCPClient2 {
 		return false;
 	}
 	
+	//sends total segments sent for goodput
 	public void Goodput() throws ClassNotFoundException, IOException {
 		System.out.println("asking for total number of segments sent " );
 		out.writeObject(String.valueOf(number_of_segments_sent));
 		out.flush();
 	}
 	
+	//for retransmitting lost packets
 	public void retransmission(int resending_seqno) throws Exception {
+		//calculates data for the graph for dropped seq numbers
 		droppedEndTime = System.nanoTime();
 		dropped_seq_no_info = String.valueOf(resending_seqno);
 		dropped_seq_no_info = dropped_seq_no_info.concat(" ");
 		dropped_seq_no_info = dropped_seq_no_info.concat(String.valueOf(droppedEndTime - sendingStartTime));
 		seq_no_dropped_over_time.add(dropped_seq_no_info);
 
+		//retransmision process
 		int position = buffer.indexOf(resending_seqno);
 		out.writeObject(buffer.get(position));
 		out.flush();
@@ -159,6 +157,7 @@ public class TCPClient2 {
 
 	}
 	
+	//adjusts sliding window size according to whether packet was successfully sent and recieved
 	public void SlidingWindowHandling() throws Exception {
 		windowStartTime = System.nanoTime();
 		if(calculate_success && sliding_window_size < MAX_SLIDING_WINDOW_VALUE && segment_lost==false) {
@@ -193,26 +192,36 @@ public class TCPClient2 {
 		window_size_over_time.add(window_graph_info);
 	}
 	
+	//method to write data for both graphs into text files
 	public void Graphs() {
 		try {
-			FileWriter fWriter = new FileWriter("sws_graph.txt");
+	
+			String file = "/Users/ektahalani/Documents/cs158a-computer-networks/socket_prorgamming_demo/src/graphs/sws_graph.txt";
+			BufferedWriter outputWriter = null;
+			outputWriter = new BufferedWriter(new FileWriter(file));
+
 			for(int i=0; i<window_size_over_time.size(); i++) {
-				fWriter.write(window_size_over_time.get(i));
-				
+				outputWriter.write(window_size_over_time.get(i));
+				outputWriter.write(" \n");
 			}
-			fWriter.close();
+			outputWriter.flush();
+			outputWriter.close();
 		} catch (IOException e) {
 			
 			e.printStackTrace();
 		}
 		
 		try {
-			FileWriter fWriter = new FileWriter("dropped_seq_numbers.txt");
+			String file2 = "/Users/ektahalani/Documents/cs158a-computer-networks/socket_prorgamming_demo/src/graphs/dropped_seq_numbers.txt";
+			BufferedWriter outputWriter = null;
+			outputWriter = new BufferedWriter(new FileWriter(file2));
 			for(int i=0; i<seq_no_dropped_over_time.size(); i++) {
-				fWriter.write(seq_no_dropped_over_time.get(i));
+				outputWriter.write(seq_no_dropped_over_time.get(i));
+				outputWriter.write(" \n");
 				
 			}
-			fWriter.close();
+			outputWriter.flush();
+			outputWriter.close();
 		} catch (IOException e) {
 			
 			e.printStackTrace();
@@ -221,18 +230,22 @@ public class TCPClient2 {
 		
 	}
 	
+	//connects with the server socket to send the packets
 	public void runClient() throws Exception {
 		
 		try {
 			//creating the client socket
-			String address = "169.254.160.77"; //sjsu
+			String address = "169.254.160.77"; 
+			
 			client = new Socket(address, 9999);
 
 			System.out.println("client socket created");
 			
+			//output stream created
 		    out = new ObjectOutputStream(client.getOutputStream()); //sending 
 		    System.out.println("output stream created");
 		    
+		    //input stream created
 		    in = new ObjectInputStream(client.getInputStream()); //recieving
 		    System.out.println("input stream created");
 			
@@ -242,13 +255,17 @@ public class TCPClient2 {
 			out.writeObject(msg);
 			out.flush();
 			
+			//acknowledges that a message has been received from the client
 			String message_recieved = (String)in.readObject();
 			System.out.println(message_recieved + " recieved by client.");
 			
-			
+			//sends the packets
 			SendPackets();
-			Graphs();
+			//gets data for the graphs
+			System.out.println("Graphs() called.");	
+    		Graphs();
 			
+			//closes the input output streams and the client socket
 			in.close();
 			out.close();
 			client.close();
