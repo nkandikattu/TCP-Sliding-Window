@@ -2,7 +2,6 @@ package server;
 
 import java.net.*;
 import java.io.*;
-import java.sql.Array;
 import java.util.*;
 
 public class TCP_Server {
@@ -14,38 +13,32 @@ public class TCP_Server {
     ObjectInputStream in;
     ObjectOutputStream out;
 
-
-    String ack, pkt, data="";
-
-    int SeqNum = 0;
-    int receiver_window_size = 1;
-    int last_frame_received = 0;
-    int largest_acceptable_frame = last_frame_received + receiver_window_size;
-
-    String segment = "";
-    final static int MAX_SEQ_NUM = (int) Math.pow(2, 16);
-    final static int MAX_SW_VALUE = (int) Math.pow(2, 16);
-    final static int MAX_SEGMENTS = 10000000;
     int currSeqNum = -1023;
-
-    int last_segment_received = 0;
     int total_segments_received = 0;
+    int total_segments_sent = 0;
 
     TreeSet<Integer> buffer = new TreeSet<>();
-    ArrayList<Integer> window_size_over_time = new ArrayList<>();
     ArrayList<String[]> seq_num_over_time = new ArrayList<>();
+    ArrayList<Double> goodputs = new ArrayList<>();
 
-    int duplicates = 0;
-
-    // Constructor with port
+    // Constructor
     public TCP_Server() {}
 
+    //
     public void checkBuffer(int seqNum) throws IOException {
+        // If buffer is empty, add sequence number to buffer
         if(buffer.isEmpty()) {
-            System.out.println("Buffer is empty, adding " + seqNum + " to buffer." );
+            //System.out.println("Buffer is empty, adding " + seqNum + " to buffer." );
             buffer.add(seqNum);
+
+            // If sequence number is the smallest missing number
         } else if(seqNum == buffer.first() - 1024) {
+
+            // Create ArrayList for indexing
             ArrayList<Integer> bufferList = new ArrayList<>(buffer);
+
+            // Check for sequence numbers in sequence starting with the original
+            // Send ACKs for all that can be moved from the buffer
             for(int i = 0; i < bufferList.size(); i++) {
                 if(seqNum == bufferList.get(0) - 1024) {
                     sendAck(seqNum + 1024);
@@ -53,12 +46,17 @@ public class TCP_Server {
                     bufferList.remove(0);
                 }
             }
+
+            // Replace old TreeSet with updated ArrayList
             buffer = new TreeSet<>(bufferList);
+
+            // If sequence number comes after a missing sequence number, add to buffer
         } else {
             buffer.add(seqNum);
         }
     }
 
+    // Sends ACK for next expected sequence number
     public void sendAck(int ack) throws IOException {
         out.writeObject(ack);
         out.flush();
@@ -66,63 +64,77 @@ public class TCP_Server {
     }
 
     // Requests number of segments sent from client to calculate good-put
-    public void requestSentSegmentNum() {
-        try {
-            out.writeObject("How many segments sent so far?");
-            out.flush();
-            System.out.println("Number of segments sent requested from client.");
-        } catch(Exception e) {
-            e.printStackTrace();
-        }
+    public void requestSentSegmentNum() throws IOException {
+        out.writeObject("How many segments sent so far?");
+        out.flush();
+        System.out.println("Number of segments sent requested from client.");
     }
 
+    // Calculates goodput and average goodput
+    public void calculateGoodput() {
+
+        // Calculates goodput and adds to ArrayList
+        double goodput = (double)total_segments_received/total_segments_sent;
+        goodputs.add(goodput);
+
+        // Calculates average goodput from ArrayList
+        double goodputSum = 0;
+        for(Double d: goodputs) {
+            goodputSum += d;
+        }
+        double goodputAvg = goodputSum/goodputs.size();
+
+        System.out.println("Goodput for " + total_segments_received + ": " + goodput);
+        System.out.println("Average Goodput: " + goodputAvg);
+    }
+
+    // All actions associated with receiving packets
     public void receivePackets() throws ClassNotFoundException {
+
+        // Start of execution time
         long startTime = System.nanoTime();
+
+        // True while client is sending segments
         boolean keepListening = true;
         while(keepListening) {
 
             try {
-                int seqNum = (int) in.readObject();
-                System.out.println("Message received: " + seqNum);
+                // Reads Object
+                Object segment = in.readObject();
 
-                total_segments_received++;
-                System.out.println("Total segments received: " + total_segments_received);
-                long endTime = System.nanoTime();
-                seq_num_over_time.add(new String[]{String.valueOf(seqNum), String.valueOf(startTime - endTime)});
+                if (segment instanceof String) {
+                    String[] str = ((String) segment).split("\\s");
+                    total_segments_sent = Integer.parseInt(str[2]);
+                    calculateGoodput();
 
-                if (buffer.isEmpty() && seqNum == currSeqNum + 1024) {
-                    if(seqNum == 64513) {
-                        sendAck(1);
-                        currSeqNum = -1023;
-                    } else {
-                        sendAck(seqNum + 1024);
-                        currSeqNum = seqNum;
-                    }
                 } else {
-                    System.out.println("checkBuffer() called.");
-                    checkBuffer(seqNum);
+                    int seqNum = (int) segment;
+                    System.out.println("Message received: " + seqNum);
+
+                    total_segments_received++;
+                    System.out.println("Total segments received: " + total_segments_received);
+                    if(total_segments_received % 1000 == 0) {
+                        requestSentSegmentNum();
+                    }
+
+                    long endTime = System.nanoTime();
+                    seq_num_over_time.add(new String[]{String.valueOf(seqNum), String.valueOf(startTime - endTime)});
+
+                    if (buffer.isEmpty() && seqNum == currSeqNum + 1024) {
+                        if(seqNum == 64513) {
+                            sendAck(1);
+                            currSeqNum = -1023;
+                        } else {
+                            sendAck(seqNum + 1024);
+                            currSeqNum = seqNum;
+                        }
+                    } else {
+                        System.out.println("checkBuffer() called.");
+                        checkBuffer(seqNum);
+                    }
+
+                    System.out.println();
                 }
-
-                System.out.println("");
-
-
-//                if((SeqNum <= last_frame_received)||(SeqNum > largest_acceptable_frame)) {
-//                    System.out.println("\nMsg received : "+data);
-//
-//                    if(last_frame_received == 15) {
-////                        out.writeObject(ack);
-////                        out.flush();
-////                        System.out.println("sending ack " +ack);
-//                        sendAck();
-//                        SeqNum++;
-//                    } else {
-//                        System.out.println("Not sending ack");
-//                    }
-//                } else {
-//                    out.writeObject(last_frame_received);
-//                    out.flush();
-//                    System.out.println("resending ack " + last_frame_received);
-//                }
             } catch (EOFException e) {
                 System.out.println("Nothing left to receive.");
                 keepListening = false;
