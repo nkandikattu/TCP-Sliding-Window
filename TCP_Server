@@ -27,9 +27,11 @@ public class TCP_Server {
     //
     public void checkBuffer(int seqNum) throws IOException {
         // If buffer is empty, add sequence number to buffer
+        // Send ACK for missing segment
         if(buffer.isEmpty()) {
             //System.out.println("Buffer is empty, adding " + seqNum + " to buffer." );
             buffer.add(seqNum);
+            sendAck(currSeqNum + 1024);
 
             // If sequence number is the smallest missing number
         } else if(seqNum == buffer.first() - 1024) {
@@ -44,6 +46,8 @@ public class TCP_Server {
                     sendAck(seqNum + 1024);
                     seqNum = bufferList.get(0);
                     bufferList.remove(0);
+
+                    currSeqNum = seqNum;
                 }
             }
 
@@ -51,8 +55,10 @@ public class TCP_Server {
             buffer = new TreeSet<>(bufferList);
 
             // If sequence number comes after a missing sequence number, add to buffer
+            // Send ACK for missing segment
         } else {
             buffer.add(seqNum);
+            sendAck(currSeqNum + 1024);
         }
     }
 
@@ -84,12 +90,15 @@ public class TCP_Server {
         }
         double goodputAvg = goodputSum/goodputs.size();
 
-        System.out.println("Goodput for " + total_segments_received + ": " + goodput);
+        System.out.println("Total segments received: " + total_segments_received);
+        System.out.println("Total segments sent: " + total_segments_sent);
+        System.out.println("Goodput for " + total_segments_received + " segments: " + goodput);
         System.out.println("Average Goodput: " + goodputAvg);
+        System.out.println();
     }
 
     // All actions associated with receiving packets
-    public void receivePackets() throws ClassNotFoundException {
+    public void receivePackets() throws ClassNotFoundException, SocketException {
 
         // Start of execution time
         long startTime = System.nanoTime();
@@ -128,8 +137,10 @@ public class TCP_Server {
                             sendAck(seqNum + 1024);
                             currSeqNum = seqNum;
                         }
+                    } else if (seqNum < currSeqNum) {
+                        System.out.println("Duplicate segment sent with sequence number: " + seqNum + ". Discarded");
                     } else {
-                        System.out.println("checkBuffer() called.");
+                        System.out.println("Loss detected. checkBuffer() called.");
                         checkBuffer(seqNum);
                     }
 
@@ -182,6 +193,8 @@ public class TCP_Server {
 
         } catch(ClassNotFoundException e) {
             e.printStackTrace();
+        } catch (SocketException e) {
+            System.out.println("Connection Refused.");
         } catch(IOException e) {
             e.printStackTrace();
         }
