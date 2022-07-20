@@ -3,16 +3,16 @@ package socket_code;
 import java.io.*;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Timer;
 
 public class TCPClient2 {
 	
 	ObjectOutputStream out;
 	ObjectInputStream in;
-	static boolean delay;
 	final static int TOTAL_SEQUENCE_NUMBERS = (int) Math.pow(2, 16);
 	final int MAX_SLIDING_WINDOW_VALUE = (int) Math.pow(2, 16);
  //   final int TOTAL_SEGMENTS = 10000000;
-	final int TOTAL_SEGMENTS = 2030;
+	final int TOTAL_SEGMENTS = 10000000;
 	int starting_seq_number = 0;
 	int ending_seq_number = 1024;
 	int sliding_window_size = 1;
@@ -38,7 +38,7 @@ public class TCPClient2 {
     String packet;
     String window_graph_info;
     String dropped_seq_no_info;
-    
+    Timer timer;
 	public void reset() {
 		seq_no = -1023;
 	}
@@ -56,12 +56,12 @@ public class TCPClient2 {
 					
 					for(j=0; j<sliding_window_size; j++) {
 						
-						  //  if(delay==true) { 
-						  //  	Thread.sleep(100); 
-						  //  	delay = false;
-						  //  	}
-							out.writeObject(seq_no);
-							out.flush();
+					        out.writeObject(seq_no);
+				//	        timer = new Timer();
+				//	        timer.schedule(new Check(), 10*1000); // schedule the task
+				    
+						    out.flush();
+							
 							System.out.println("Sending segment # " + segment_number);
 							System.out.println("Sending seq number " + seq_no + " and window size is : " + sliding_window_size);
 							buffer.add(seq_no);
@@ -73,6 +73,7 @@ public class TCPClient2 {
 							number_of_segments_sent++;
 							
 							Object recieved_from_server = in.readObject();
+							
 							if(recieved_from_server instanceof String) {
 								Goodput();
 						//		delay = true;
@@ -112,6 +113,12 @@ public class TCPClient2 {
 				System.out.println("***>>>  segments value after reset " + segment_number + "  sequence number value after reset: " + seq_no);
 				
 			}
+            
+	        public void Check(Object o) throws Exception {
+		         if(o==null) {
+			          retransmission(segment_number-1);
+		    }
+	        }
 
 	
 	public boolean AckRecieved(Object recieved) throws IOException, ClassNotFoundException {
@@ -219,7 +226,7 @@ public class TCPClient2 {
 		try {
 			//creating the client socket
 			String address = "169.254.160.77"; //sjsu
-			client = new Socket("localhost", 9999);
+			client = new Socket(address, 9999);
 
 			System.out.println("client socket created");
 			
