@@ -64,6 +64,7 @@ public class TCPClient2 {
 					//		packet = packet.concat(" ");
 					//		packet = packet.concat(String.valueOf(sliding_window_size)); //sending the window size
 							out.writeObject(seq_no);
+							out.flush();
 							System.out.println("Sending seq number " + seq_no + " and window size is : " + sliding_window_size);
 							buffer.add(	new Integer[]{segment_number, seq_no});
 							if(seq_no >= TOTAL_SEQUENCE_NUMBERS || (seq_no + 1024) >= TOTAL_SEQUENCE_NUMBERS) {
@@ -101,10 +102,9 @@ public class TCPClient2 {
 		Object recieved_from_server = in.readObject();
 		if(recieved_from_server instanceof String) {
 			Goodput();
-			return true;
 		}
-		else {
-			int Ack = (int) in.readObject();
+		 if(recieved_from_server instanceof Integer){
+			int Ack =  (int) in.readObject();
 	        last_ack_recieved = Ack;
 	        System.out.println("last ack recieved by client is : " + last_ack_recieved);
 
@@ -115,14 +115,14 @@ public class TCPClient2 {
 	        	System.out.println("ack received : " + last_ack_recieved);
 	        	return true;
 	        } 
-	        
-	        return false;
 		}
+		return false;
 	}
 	
 	public void Goodput() throws ClassNotFoundException, IOException {
 		System.out.println("asking for total number of segments sent " );
 		out.writeObject(String.valueOf(number_of_segments_sent));
+		out.flush();
 	}
 	
 	public void retransmission(int resending_from_segment) throws IOException {
