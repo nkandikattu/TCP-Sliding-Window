@@ -103,8 +103,8 @@ public class TCP_Server {
                 Object segment = in.readObject();
 
                 if (segment instanceof String) {
-                    String[] str = ((String) segment).split("\\s");
-                    total_segments_sent = Integer.parseInt(str[2]);
+                    String segments_sent = (String) segment;
+                    total_segments_sent = Integer.parseInt(segments_sent);
                     calculateGoodput();
 
                 } else {
