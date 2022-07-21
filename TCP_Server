@@ -6,7 +6,7 @@ import java.util.*;
 
 public class TCP_Server {
 
-    // Initialize socket and input stream
+    // Initialize socket and I/O streams
     Socket sender = null;
     ServerSocket receiver;
 
@@ -24,8 +24,10 @@ public class TCP_Server {
     // Constructor
     public TCP_Server() {}
 
-    //
+    // Performs actions like adding to/deleting from buffer
+    // Sending ACKs for buffered segments when deleting from buffer
     public void checkBuffer(int seqNum) throws IOException {
+
         // If buffer is empty, add sequence number to buffer
         // Send ACK for missing segment
         if(buffer.isEmpty()) {
@@ -54,8 +56,8 @@ public class TCP_Server {
             // Replace old TreeSet with updated ArrayList
             buffer = new TreeSet<>(bufferList);
 
-            // If sequence number comes after a missing sequence number, add to buffer
-            // Send ACK for missing segment
+        // If sequence number comes after a missing sequence number, add to buffer
+        // Send ACK for missing segment
         } else {
             buffer.add(seqNum);
             sendAck(currSeqNum + 1024);
@@ -108,28 +110,40 @@ public class TCP_Server {
         while(keepListening) {
 
             try {
+
                 // Reads Object
                 Object segment = in.readObject();
 
+                // If receiving total number of segments sent
                 if (segment instanceof String) {
                     String segments_sent = (String) segment;
                     total_segments_sent = Integer.parseInt(segments_sent);
                     calculateGoodput();
 
+                // If receiving segments
                 } else {
+
+                    // Casting sequence number to int
                     int seqNum = (int) segment;
                     System.out.println("Message received: " + seqNum);
 
+                    // Incrementing segments total segments received
                     total_segments_received++;
                     System.out.println("Total segments received: " + total_segments_received);
+
+                    // Requesting total segments sent from client after reaching 1000 segments received
                     if(total_segments_received % 1000 == 0) {
                         requestSentSegmentNum();
                     }
 
+                    // Tracking sequence numbers over time
                     long endTime = System.nanoTime();
-                    seq_num_over_time.add(new String[]{String.valueOf(seqNum), String.valueOf(startTime - endTime)});
+                    seq_num_over_time.add(new String[]{Integer.toString(seqNum), Double.toString((endTime - startTime)/Math.pow(10,9))});
 
+                    // If the buffer is empty or the sequence number is the one that is expected
                     if (buffer.isEmpty() && seqNum == currSeqNum + 1024) {
+
+                        // Handles max sequence number of 2^16
                         if(seqNum == 64513) {
                             sendAck(1);
                             currSeqNum = -1023;
@@ -137,17 +151,26 @@ public class TCP_Server {
                             sendAck(seqNum + 1024);
                             currSeqNum = seqNum;
                         }
+
+                    // If duplicate segment is sent
                     } else if (seqNum < currSeqNum) {
                         System.out.println("Duplicate segment sent with sequence number: " + seqNum + ". Discarded");
+
+                    // If there has been some loss
                     } else {
-                        System.out.println("Loss detected. checkBuffer() called.");
+                        System.out.println("Loss detected for sequence number " + seqNum + ". checkBuffer() called.");
                         checkBuffer(seqNum);
                     }
 
                     System.out.println();
                 }
+
+            // If client is not sending any more segments
             } catch (EOFException e) {
                 System.out.println("Nothing left to receive.");
+                keepListening = false;
+            } catch (SocketException e) {
+                System.out.println("Client disconnected.");
                 keepListening = false;
             } catch (IOException e) {
                 e.printStackTrace();
@@ -156,45 +179,73 @@ public class TCP_Server {
 
     }
 
+    // Writes data for both graphs into text files
+    public void Graphs() {
+
+        try {
+            String filePath = "/Users/neeharikakandikattu/Documents/SJSU/Summer2022/CS158A/TCP_Project/src/server/seq_numbers";
+            BufferedWriter outputWriter = new BufferedWriter(new FileWriter(filePath));
+            for(int i = 0; i < seq_num_over_time.size(); i++) {
+                outputWriter.write(String.format("%s,%s%n", seq_num_over_time.get(i)[0], seq_num_over_time.get(i)[1]));
+            }
+            outputWriter.flush();
+            outputWriter.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     public void run() {
 
         try {
 
             // Instantiate server
-            receiver = new ServerSocket(9999);
+            receiver = new ServerSocket(9999, 10000000, InetAddress.getByName("169.254.160.77"));
             System.out.println("TCP_Server established: " + receiver.getInetAddress());
 
-            // Establish connection with Client
-            System.out.println("\nWaiting for a client ...");
-            sender = receiver.accept();
-            System.out.println("Client accepted.");
-            System.out.println("Connection established with: " + sender.getInetAddress());
+            while(true) {
 
-            // Takes in input from client socket and gives output
-            in = new ObjectInputStream(sender.getInputStream());
-            out = new ObjectOutputStream(sender.getOutputStream());
+                // Clear buffer and reset from previous connection if any
+                buffer.clear();
+                currSeqNum = -1023;
+                total_segments_received = 0;
+                total_segments_sent = 0;
+                seq_num_over_time.clear();
+                goodputs.clear();
 
-            // Handshake in form of receiving "network" and sending "success"
-            String msg = (String)in.readObject();
-            System.out.println("\nMessage received: " + msg);
-            if(msg.equals("network")) {
-                out.writeObject("success");
-                out.flush();
-                System.out.println("Connection tested successfully.");
+                // Establish connection with Client
+                System.out.println("\nWaiting for a client ...");
+                sender = receiver.accept();
+                System.out.println("Client accepted.");
+                System.out.println("Connection established with: " + sender.getInetAddress());
+
+                // Takes in input from client socket and gives output
+                in = new ObjectInputStream(sender.getInputStream());
+                out = new ObjectOutputStream(sender.getOutputStream());
+
+                // Handshake in form of receiving "network" and sending "success"
+                String msg = (String) in.readObject();
+                System.out.println("\nMessage received: " + msg);
+                if (msg.equals("network")) {
+                    out.writeObject("success");
+                    out.flush();
+                    System.out.println("Connection tested successfully.");
+                }
+
+                receivePackets();
+                Graphs();
+
+                // Close I/O streams and server.
+                in.close();
+                out.close();
+                System.out.println("\nConnection Terminated.");
+
             }
-
-            receivePackets();
-
-            // Close I/O streams and server.
-            in.close();
-            out.close();
-            receiver.close();
-            System.out.println("\nConnection Terminated.");
 
         } catch(ClassNotFoundException e) {
             e.printStackTrace();
         } catch (SocketException e) {
-            System.out.println("Connection Refused.");
+            e.printStackTrace();
         } catch(IOException e) {
             e.printStackTrace();
         }
