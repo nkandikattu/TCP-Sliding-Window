@@ -1,301 +1,267 @@
-package socket_code;
+package server;
 
+import java.net.*;
 import java.io.*;
-import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Timer;
+import java.util.*;
 
 /*
- * Ekta Halani
- * Neeharika Kandikattu
- * Professor Saxena
- * CS158A Sec 01
+Ekta Halani
+Neeharika Kandikattu
+Professor Saxena
+CS 158A Sec 01
+
+Server Code for TCP Sliding Window Protocol Project
  */
 
-/*
- * Client class for the TCP Project
- */
-public class TCPClient2 {
-	
-	//variables declared here
-	ObjectOutputStream out;
-	ObjectInputStream in;
-	final static int TOTAL_SEQUENCE_NUMBERS = (int) Math.pow(2, 16);
-	final int MAX_SLIDING_WINDOW_VALUE = (int) Math.pow(2, 16);
-	final int TOTAL_SEGMENTS = 10000000;
-	int sliding_window_size = 1;
-	int last_ack_recieved = 0;
-	int segment_number = 1;
-    boolean segment_lost = false;
-    int ack_expected;
-    int j = 0;
-    int seq_no = 1;
-    boolean calculate_success;
-    Socket client;
-    int number_of_segments_sent = 0;
-    ArrayList<Integer> buffer = new ArrayList<>();
-    ArrayList<String> seq_no_dropped_over_time = new ArrayList<>();
-    ArrayList<String> window_size_over_time = new ArrayList<>();
-    long sendingStartTime;
-    long droppedEndTime;
-    long windowStartTime;
-    long windowEndTime;
-    String window_graph_info;
-    String dropped_seq_no_info;
-    
-    //method to reset the sequence number when it reaches 2^16
-	public void reset() {
-		seq_no = -1023;
-	}
-	
-	//sending the segments
-	public void SendPackets() throws Exception{
-			    sendingStartTime = System.nanoTime();
-			    windowStartTime = System.nanoTime();
-			    //packets are sent while the segment number doesn't reach the total number of segments to send
-				while(segment_number <TOTAL_SEGMENTS ) {
-					//resets sequence number 
-					if(seq_no >= TOTAL_SEQUENCE_NUMBERS) {
-						reset();
-					}
-					System.out.println(" BEGINNING: segments value " + segment_number + "sequence number value : " + seq_no);
-					System.out.println("sending packets..." );
-					
-					//starts sending segments according to window size
-					for(j=0; j<sliding_window_size; j++) {
-						
-						    //writes sequence number to output stream
-					        out.writeObject(seq_no);
-						    out.flush();
-							
-							System.out.println("Sending segment # " + segment_number);
-							System.out.println("Sending seq number " + seq_no + " and window size is : " + sliding_window_size);
-							//adds sequence number to buffer
-							buffer.add(seq_no);
-							if(seq_no >= TOTAL_SEQUENCE_NUMBERS || (seq_no + 1024) >= TOTAL_SEQUENCE_NUMBERS) {
-								reset();
-							}
-							seq_no += 1024;
-							segment_number++;
-							number_of_segments_sent++;
-							
-							Object recieved_from_server = in.readObject();
-							/*if server sends a string asking for number of segments sent, it is sent as a string
-							 * else if an ack is recieved, the success is calculated
-							 */
-							if(recieved_from_server instanceof String) {
-								Goodput();
-						//		delay = true;
-								Object next = in.readObject();
-								calculate_success = AckRecieved(next);
-								if(!calculate_success) {
-									SlidingWindowHandling();
-									break;
-								}
-							}
-							if(recieved_from_server instanceof Integer) {
-								calculate_success = AckRecieved(recieved_from_server);
-								if(!calculate_success) {
-									SlidingWindowHandling();
-									break;
-								}
-							}
+public class TCP_Server {
 
-							//sending stops if the segment number reaches the total number of segments
-							if(segment_number==TOTAL_SEGMENTS+1) {
-								break;
-							}
-							System.out.println();
-							
-					}
-					//called to adjust the sliding window
-					SlidingWindowHandling();
-					
-					System.out.println("one transaction completed");
-					
-					System.out.println("value of next segment sending is  " + segment_number );
-					
-				}
-				
-				System.out.println("***>>>  segments value " + segment_number + "  sequence number value : " + seq_no);
-				System.out.println("all segments sent, restart.");
-				
-				System.out.println("***>>>  segments value after reset " + segment_number + "  sequence number value after reset: " + seq_no);
-				
-			}
-            
+    // Initialize socket and I/O streams
+    Socket sender = null;
+    ServerSocket receiver;
 
-	/*
-	 * if the correct ack has been recieved this method returns true,
-	 * else it returns false
-	 */
-	public boolean AckRecieved(Object recieved) throws IOException, ClassNotFoundException {
+    ObjectInputStream in;
+    ObjectOutputStream out;
 
-			int Ack =  (int) recieved;
-	        last_ack_recieved = Ack;
-	        System.out.println("last ack recieved by client is : " + last_ack_recieved);
+    int currSeqNum = -1023;
+    int total_segments_received = 0;
+    int total_segments_sent = 0;
 
-	        ack_expected = seq_no;
-	        System.out.println("expected ack  : " + ack_expected);
-	        
-	        if(last_ack_recieved==ack_expected) {
-	        	System.out.println("ack received : " + last_ack_recieved);
-	        	return true;
-	        } 
-		return false;
-	}
-	
-	//sends total number of segments sent for goodput
-	public void Goodput() throws ClassNotFoundException, IOException {
-		System.out.println("asking for total number of segments sent " );
-		out.writeObject(String.valueOf(number_of_segments_sent));
-		out.flush();
-	}
-	
-	//for retransmitting lost packets
-	public void retransmission(int resending_seqno) throws Exception {
-		//calculates data for the graph for dropped seq numbers
-		droppedEndTime = System.nanoTime();
-		dropped_seq_no_info = String.valueOf(resending_seqno);
-		dropped_seq_no_info = dropped_seq_no_info.concat(" ");
-		dropped_seq_no_info = dropped_seq_no_info.concat(String.valueOf((droppedEndTime - sendingStartTime)/Math.pow(10, 9)));
-		seq_no_dropped_over_time.add(dropped_seq_no_info);
+    TreeSet<Integer> buffer = new TreeSet<>();
+    ArrayList<String[]> seq_num_over_time = new ArrayList<>();
+    ArrayList<Double> goodputs = new ArrayList<>();
 
-		//retransmission process
-		int position = buffer.indexOf(resending_seqno);
-		out.writeObject(buffer.get(position));
-		out.flush();
-		System.out.println("Resending seq  no " + seq_no + " for segment # : " + (segment_number-1));
-		number_of_segments_sent++;
-//		SendPackets();
+    // Constructor
+    public TCP_Server() {}
 
-	}
-	
-	//adjusts sliding window size according to whether packet was successfully sent and recieved
-	public void SlidingWindowHandling() throws Exception {
-		
-		windowEndTime = System.nanoTime();
-		window_graph_info = String.valueOf(sliding_window_size);
-		window_graph_info = window_graph_info.concat(" ");
-		window_graph_info = window_graph_info.concat(String.valueOf((windowEndTime - windowStartTime)/Math.pow(10, 9)));
-		window_size_over_time.add(window_graph_info);
-		
-		if(calculate_success && sliding_window_size < MAX_SLIDING_WINDOW_VALUE && segment_lost==false) {
-			sliding_window_size = sliding_window_size * 2;
-			System.out.println("Successfully sent segments upto " + (segment_number-1) + "\n" );
-			System.out.println("Window size :  " + sliding_window_size + "\n" );
-			buffer.clear();
-		}
-		else if(calculate_success && sliding_window_size < MAX_SLIDING_WINDOW_VALUE && segment_lost==true) {
-			sliding_window_size = sliding_window_size + 1;
-			System.out.println("Successfully sent segments upto " + (segment_number-1) + "\n" );
-			System.out.println("Window size :  " + sliding_window_size + "\n" );
-			buffer.clear();
-		}
-		else if(!calculate_success){
-			sliding_window_size = sliding_window_size/2;
-			segment_lost=true;
-			System.out.println("Unsuccessfully sent segment " + (segment_number-1) + "\n" );
-			System.out.println("Window size :  " + sliding_window_size + "\n" );
-			retransmission(last_ack_recieved);
-		}
-		else if(calculate_success && sliding_window_size==MAX_SLIDING_WINDOW_VALUE) {
-			sliding_window_size = MAX_SLIDING_WINDOW_VALUE;
-			System.out.println("Successfully sent segments upto " + (segment_number-1) + "\n" );
-			System.out.println("Window size :  " + sliding_window_size + "\n" );
-			buffer.clear();
-		}
-		
-	}
-	
-	//method to write data for both graphs into text files
-	public void Graphs() {
-		try {
-	
-			String file = "/Users/ektahalani/Documents/cs158a-computer-networks/socket_prorgamming_demo/src/graphs/sws_graph.txt";
-			BufferedWriter outputWriter = null;
-			outputWriter = new BufferedWriter(new FileWriter(file));
+    // Performs actions like adding to/deleting from buffer
+    // Sending ACKs for buffered segments when deleting from buffer
+    public void checkBuffer(int seqNum) throws IOException {
 
-			for(int i=0; i<window_size_over_time.size(); i++) {
-				outputWriter.write(window_size_over_time.get(i));
-				outputWriter.write(" \n");
-			}
-			outputWriter.flush();
-			outputWriter.close();
-		} catch (IOException e) {
-			
-			e.printStackTrace();
-		}
-		
-		try {
-			String file2 = "/Users/ektahalani/Documents/cs158a-computer-networks/socket_prorgamming_demo/src/graphs/dropped_seq_numbers.txt";
-			BufferedWriter outputWriter = null;
-			outputWriter = new BufferedWriter(new FileWriter(file2));
-			for(int i=0; i<seq_no_dropped_over_time.size(); i++) {
-				outputWriter.write(seq_no_dropped_over_time.get(i));
-				outputWriter.write(" \n");
-				
-			}
-			outputWriter.flush();
-			outputWriter.close();
-		} catch (IOException e) {
-			
-			e.printStackTrace();
-		}
-		
-		
-	}
-	
-	//connects with the server socket to send the packets
-	public void runClient() throws Exception {
-		
-		try {
-			//creating the client socket
-			String address = "169.254.160.77"; //IP address for 2nd computer
-			
-			client = new Socket("localhost", 9999);
+        // If buffer is empty, add sequence number to buffer
+        // Send ACK for missing segment
+        if(buffer.isEmpty()) {
+            buffer.add(seqNum);
+            sendAck(currSeqNum + 1024);
 
-			System.out.println("client socket created");
-			
-			//output stream created
-		    out = new ObjectOutputStream(client.getOutputStream()); //sending 
-		    System.out.println("output stream created");
-		    
-		    //input stream created
-		    in = new ObjectInputStream(client.getInputStream()); //recieving
-		    System.out.println("input stream created");
-			
-			//sending a message to the server
-			System.out.println("sending message...");
-			String msg = ("network");
-			out.writeObject(msg);
-			out.flush();
-			
-			//acknowledges that a message has been received from the client
-			String message_recieved = (String)in.readObject();
-			System.out.println(message_recieved + " recieved by client.");
-			
-			//sends the packets
-			SendPackets();
-			//gets data for the graphs
-			//System.out.println("Graphs() called.");	
-    		//Graphs();
-			
-			//closes the input output streams and the client socket
-			in.close();
-			out.close();
-			client.close();
-			
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		
-		System.out.println("connection terminated.");		
-	}
-	
-	public static void main(String[]  args) throws Exception {
-		TCPClient2 s = new TCPClient2();
-	     s.runClient();
-	}
+        // If sequence number is the smallest missing number
+        } else if(seqNum == buffer.first() - 1024) {
 
+            // Create ArrayList for indexing
+            ArrayList<Integer> bufferList = new ArrayList<>(buffer);
+
+            // Check for sequence numbers in sequence starting with the original
+            // Send ACKs for all that can be moved from the buffer
+            for(int i = 0; i < bufferList.size(); i++) {
+                if(seqNum == bufferList.get(0) - 1024) {
+                    sendAck(seqNum + 1024);
+                    seqNum = bufferList.get(0);
+                    bufferList.remove(0);
+
+                    currSeqNum = seqNum;
+                }
+            }
+
+            // Replace old TreeSet with updated ArrayList
+            buffer = new TreeSet<>(bufferList);
+
+        // If sequence number comes after a missing sequence number, add to buffer
+        // Send ACK for missing segment
+        } else {
+            buffer.add(seqNum);
+            sendAck(currSeqNum + 1024);
+        }
+    }
+
+    // Sends ACK for next expected sequence number
+    public void sendAck(int ack) throws IOException {
+        out.writeObject(ack);
+        out.flush();
+        System.out.println("Sent ACK of " + ack);
+    }
+
+    // Requests number of segments sent from client to calculate good-put
+    public void requestSentSegmentNum() throws IOException {
+        out.writeObject("How many segments sent so far?");
+        out.flush();
+        System.out.println("Number of segments sent requested from client.");
+    }
+
+    // Calculates goodput and average goodput
+    public void calculateGoodput() {
+
+        // Calculates goodput and adds to ArrayList
+        double goodput = (double)total_segments_received/total_segments_sent;
+        goodputs.add(goodput);
+
+        // Calculates average goodput from ArrayList
+        double goodputSum = 0;
+        for(Double d: goodputs) {
+            goodputSum += d;
+        }
+        double goodputAvg = goodputSum/goodputs.size();
+
+        System.out.println("Total segments received: " + total_segments_received);
+        System.out.println("Total segments sent: " + total_segments_sent);
+        System.out.println("Goodput for " + total_segments_received + " segments: " + goodput);
+        System.out.println("Average Goodput: " + goodputAvg);
+        System.out.println();
+    }
+
+    // All actions associated with receiving packets
+    public void receivePackets() throws ClassNotFoundException, SocketException {
+
+        // Start of execution time
+        long startTime = System.nanoTime();
+
+        // True while client is sending segments
+        boolean keepListening = true;
+        while(keepListening) {
+
+            try {
+
+                // Reads Object
+                Object segment = in.readObject();
+
+                // If receiving total number of segments sent
+                if (segment instanceof String) {
+                    String segments_sent = (String) segment;
+                    total_segments_sent = Integer.parseInt(segments_sent);
+                    calculateGoodput();
+
+                // If receiving segments
+                } else {
+
+                    // Casting sequence number to int
+                    int seqNum = (int) segment;
+                    System.out.println("Message received: " + seqNum);
+
+                    // Incrementing segments total segments received
+                    total_segments_received++;
+                    System.out.println("Total segments received: " + total_segments_received);
+
+                    // Requesting total segments sent from client after reaching 1000 segments received
+                    if(total_segments_received % 1000 == 0) {
+                        requestSentSegmentNum();
+                    }
+
+                    // Tracking sequence numbers over time
+                    long endTime = System.nanoTime();
+                    seq_num_over_time.add(new String[]{Integer.toString(seqNum), Double.toString((endTime - startTime)/Math.pow(10,9))});
+
+                    // If the buffer is empty or the sequence number is the one that is expected
+                    if (buffer.isEmpty() && seqNum == currSeqNum + 1024) {
+
+                        // Handles max sequence number of 2^16
+                        if(seqNum == 64513) {
+                            sendAck(1);
+                            currSeqNum = -1023;
+                        } else {
+                            sendAck(seqNum + 1024);
+                            currSeqNum = seqNum;
+                        }
+
+                    // If duplicate segment is sent
+                    } else if (seqNum < currSeqNum) {
+                        System.out.println("Duplicate segment sent with sequence number: " + seqNum + ". Discarded");
+
+                    // If there has been some loss
+                    } else {
+                        System.out.println("Loss detected for sequence number " + seqNum + ". checkBuffer() called.");
+                        checkBuffer(seqNum);
+                    }
+
+                    System.out.println();
+                }
+
+            // If client is not sending any more segments
+            } catch (EOFException e) {
+                System.out.println("Nothing left to receive.");
+                keepListening = false;
+            } catch (SocketException e) {
+                System.out.println("Client disconnected.");
+                keepListening = false;
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+    }
+
+    // Writes data for both graphs into text files
+    public void Graphs() {
+
+        try {
+            // Creating csv file from sequence numbers and timestamps
+            String filePath = "/Users/neeharikakandikattu/Documents/SJSU/Summer2022/CS158A/TCP_Project/src/server/seq_numbers";
+            BufferedWriter outputWriter = new BufferedWriter(new FileWriter(filePath));
+            for(int i = 0; i < seq_num_over_time.size(); i++) {
+                outputWriter.write(String.format("%s,%s%n", seq_num_over_time.get(i)[0], seq_num_over_time.get(i)[1]));
+            }
+            outputWriter.flush();
+            outputWriter.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void run() {
+
+        try {
+
+            // Instantiate server
+            receiver = new ServerSocket(9999, 10000000, InetAddress.getByName("169.254.160.77"));
+            System.out.println("TCP_Server established: " + receiver.getInetAddress());
+
+            while(true) {
+
+                // Clear buffer and reset from previous connection if any
+                buffer.clear();
+                currSeqNum = -1023;
+                total_segments_received = 0;
+                total_segments_sent = 0;
+                seq_num_over_time.clear();
+                goodputs.clear();
+
+                // Establish connection with Client
+                System.out.println("\nWaiting for a client ...");
+                sender = receiver.accept();
+                System.out.println("Client accepted.");
+                System.out.println("Connection established with: " + sender.getInetAddress());
+
+                // Takes in input from client socket and gives output
+                in = new ObjectInputStream(sender.getInputStream());
+                out = new ObjectOutputStream(sender.getOutputStream());
+
+                // Handshake in form of receiving "network" and sending "success"
+                String msg = (String) in.readObject();
+                System.out.println("\nMessage received: " + msg);
+                if (msg.equals("network")) {
+                    out.writeObject("success");
+                    out.flush();
+                    System.out.println("Connection tested successfully.");
+                }
+
+                receivePackets();
+                //Graphs();
+
+                // Close I/O streams and server.
+                in.close();
+                out.close();
+                System.out.println("\nConnection Terminated.");
+
+            }
+
+        } catch(ClassNotFoundException e) {
+            e.printStackTrace();
+        } catch (SocketException e) {
+            e.printStackTrace();
+        } catch(IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void main(String args[]) throws IOException, InterruptedException {
+        TCP_Server server = new TCP_Server();
+        server.run();
+    }
 }
