@@ -5,14 +5,24 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Timer;
 
+/*
+ * Ekta Halani
+ * Neeharika Kandikattu
+ * Professor Saxena
+ * CS158A Sec 01
+ */
+
+/*
+ * Client class for the TCP Project
+ */
 public class TCPClient2 {
 	
+	//variables declared here
 	ObjectOutputStream out;
 	ObjectInputStream in;
 	final static int TOTAL_SEQUENCE_NUMBERS = (int) Math.pow(2, 16);
 	final int MAX_SLIDING_WINDOW_VALUE = (int) Math.pow(2, 16);
- //   final int TOTAL_SEGMENTS = 10000000;
-	final int TOTAL_SEGMENTS = 1000;
+	final int TOTAL_SEGMENTS = 10000000;
 	int starting_seq_number = 0;
 	int ending_seq_number = 1024;
 	int sliding_window_size = 1;
@@ -38,7 +48,7 @@ public class TCPClient2 {
     String packet;
     String window_graph_info;
     String dropped_seq_no_info;
-    Timer timer;
+    
     //method to reset the sequence number when it reaches 2^16
 	public void reset() {
 		seq_no = -1023;
@@ -47,22 +57,26 @@ public class TCPClient2 {
 	//sending the segments
 	public void SendPackets() throws Exception{
 			    sendingStartTime = System.nanoTime();
+			    windowStartTime = System.nanoTime();
+			    //packets are sent while the segment number doesn't reach the total number of segments to send
 				while(segment_number <TOTAL_SEGMENTS ) {
+					//resets sequence number 
 					if(seq_no >= TOTAL_SEQUENCE_NUMBERS) {
 						reset();
 					}
 					System.out.println(" BEGINNING: segments value " + segment_number + "sequence number value : " + seq_no);
 					System.out.println("sending packets..." );
-					//number of segments to send
 					
+					//starts sending segments according to window size
 					for(j=0; j<sliding_window_size; j++) {
 						
+						    //writes sequence number to output stream
 					        out.writeObject(seq_no);
-
 						    out.flush();
 							
 							System.out.println("Sending segment # " + segment_number);
 							System.out.println("Sending seq number " + seq_no + " and window size is : " + sliding_window_size);
+							//adds sequence number to buffer
 							buffer.add(seq_no);
 							if(seq_no >= TOTAL_SEQUENCE_NUMBERS || (seq_no + 1024) >= TOTAL_SEQUENCE_NUMBERS) {
 								reset();
@@ -72,7 +86,9 @@ public class TCPClient2 {
 							number_of_segments_sent++;
 							
 							Object recieved_from_server = in.readObject();
-							
+							/*if server sends a string asking for number of segments sent, it is sent as a string
+							 * else if an ack is recieved, the success is calculated
+							 */
 							if(recieved_from_server instanceof String) {
 								Goodput();
 						//		delay = true;
@@ -91,6 +107,7 @@ public class TCPClient2 {
 								}
 							}
 
+							//sending stops if the segment number reaches the total number of segments
 							if(segment_number==TOTAL_SEGMENTS+1) {
 								break;
 							}
@@ -114,7 +131,10 @@ public class TCPClient2 {
 			}
             
 
-	//calculates whether correct ack has been received
+	/*
+	 * if the correct ack has been recieved this method returns true,
+	 * else it returns false
+	 */
 	public boolean AckRecieved(Object recieved) throws IOException, ClassNotFoundException {
 
 			int Ack =  (int) recieved;
@@ -131,7 +151,7 @@ public class TCPClient2 {
 		return false;
 	}
 	
-	//sends total segments sent for goodput
+	//sends total number of segments sent for goodput
 	public void Goodput() throws ClassNotFoundException, IOException {
 		System.out.println("asking for total number of segments sent " );
 		out.writeObject(String.valueOf(number_of_segments_sent));
@@ -144,10 +164,10 @@ public class TCPClient2 {
 		droppedEndTime = System.nanoTime();
 		dropped_seq_no_info = String.valueOf(resending_seqno);
 		dropped_seq_no_info = dropped_seq_no_info.concat(" ");
-		dropped_seq_no_info = dropped_seq_no_info.concat(String.valueOf(droppedEndTime - sendingStartTime));
+		dropped_seq_no_info = dropped_seq_no_info.concat(String.valueOf((droppedEndTime - sendingStartTime)/Math.pow(10, 9)));
 		seq_no_dropped_over_time.add(dropped_seq_no_info);
 
-		//retransmision process
+		//retransmission process
 		int position = buffer.indexOf(resending_seqno);
 		out.writeObject(buffer.get(position));
 		out.flush();
@@ -159,7 +179,13 @@ public class TCPClient2 {
 	
 	//adjusts sliding window size according to whether packet was successfully sent and recieved
 	public void SlidingWindowHandling() throws Exception {
-		windowStartTime = System.nanoTime();
+		
+		windowEndTime = System.nanoTime();
+		window_graph_info = String.valueOf(sliding_window_size);
+		window_graph_info = window_graph_info.concat(" ");
+		window_graph_info = window_graph_info.concat(String.valueOf((windowEndTime - windowStartTime)/Math.pow(10, 9)));
+		window_size_over_time.add(window_graph_info);
+		
 		if(calculate_success && sliding_window_size < MAX_SLIDING_WINDOW_VALUE && segment_lost==false) {
 			sliding_window_size = sliding_window_size * 2;
 			System.out.println("Successfully sent segments upto " + (segment_number-1) + "\n" );
@@ -185,11 +211,7 @@ public class TCPClient2 {
 			System.out.println("Window size :  " + sliding_window_size + "\n" );
 			buffer.clear();
 		}
-		windowEndTime = System.nanoTime();
-		window_graph_info = String.valueOf(sliding_window_size);
-		window_graph_info = window_graph_info.concat(" ");
-		window_graph_info = window_graph_info.concat(String.valueOf(windowEndTime - windowStartTime));
-		window_size_over_time.add(window_graph_info);
+		
 	}
 	
 	//method to write data for both graphs into text files
@@ -235,9 +257,9 @@ public class TCPClient2 {
 		
 		try {
 			//creating the client socket
-			String address = "169.254.160.77"; 
+			String address = "169.254.160.77"; //IP address for 2nd computer
 			
-			client = new Socket(address, 9999);
+			client = new Socket("localhost", 9999);
 
 			System.out.println("client socket created");
 			
@@ -262,8 +284,8 @@ public class TCPClient2 {
 			//sends the packets
 			SendPackets();
 			//gets data for the graphs
-			System.out.println("Graphs() called.");	
-    		Graphs();
+			//System.out.println("Graphs() called.");	
+    		//Graphs();
 			
 			//closes the input output streams and the client socket
 			in.close();
