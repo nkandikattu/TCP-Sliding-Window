@@ -4,6 +4,15 @@ import java.net.*;
 import java.io.*;
 import java.util.*;
 
+/*
+Ekta Halani
+Neeharika Kandikattu
+Professor Saxena
+CS 158A Sec 01
+
+Server Code for TCP Sliding Window Protocol Project
+ */
+
 public class TCP_Server {
 
     // Initialize socket and I/O streams
@@ -31,11 +40,10 @@ public class TCP_Server {
         // If buffer is empty, add sequence number to buffer
         // Send ACK for missing segment
         if(buffer.isEmpty()) {
-            //System.out.println("Buffer is empty, adding " + seqNum + " to buffer." );
             buffer.add(seqNum);
             sendAck(currSeqNum + 1024);
 
-            // If sequence number is the smallest missing number
+        // If sequence number is the smallest missing number
         } else if(seqNum == buffer.first() - 1024) {
 
             // Create ArrayList for indexing
@@ -183,6 +191,7 @@ public class TCP_Server {
     public void Graphs() {
 
         try {
+            // Creating csv file from sequence numbers and timestamps
             String filePath = "/Users/neeharikakandikattu/Documents/SJSU/Summer2022/CS158A/TCP_Project/src/server/seq_numbers";
             BufferedWriter outputWriter = new BufferedWriter(new FileWriter(filePath));
             for(int i = 0; i < seq_num_over_time.size(); i++) {
@@ -233,7 +242,7 @@ public class TCP_Server {
                 }
 
                 receivePackets();
-                Graphs();
+                //Graphs();
 
                 // Close I/O streams and server.
                 in.close();
